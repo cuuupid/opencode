@@ -1,0 +1,13 @@
+Use this tool to search your memory catalog for past decisions, patterns, and knowledge. Use this when you need context from previous sessions.
+
+## When to Use This Tool
+
+1. The user asks about a past decision or discussion
+2. You need context about how something was done before
+3. You want to check if there's existing knowledge about a topic before starting work
+4. The user references something from a previous session
+
+## Parameters
+
+- `query`: What to search for
+- `wing`: Optional - filter by wing (project/person name)

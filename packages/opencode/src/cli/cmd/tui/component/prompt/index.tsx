@@ -850,14 +850,16 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   return
                 }
-                // Handle clipboard paste (Ctrl+V) - check for images first on Windows
-                // This is needed because Windows terminal doesn't properly send image data
-                // through bracketed paste, so we need to intercept the keypress and
-                // directly read from clipboard before the terminal handles it
+                // Handle clipboard paste (Ctrl+V) - intercept before the terminal
+                // sends a bracketed paste so we can check for images first.
+                // preventDefault must be called synchronously to suppress the
+                // bracketed paste; if the clipboard turns out to be plain text
+                // we insert it manually afterwards.
                 if (keybind.match("input_paste", e)) {
+                  e.preventDefault()
                   const content = await Clipboard.read()
-                  if (content?.mime.startsWith("image/")) {
-                    e.preventDefault()
+                  if (!content) return
+                  if (content.mime.startsWith("image/")) {
                     await pasteImage({
                       filename: "clipboard",
                       mime: content.mime,
@@ -865,7 +867,10 @@ export function Prompt(props: PromptProps) {
                     })
                     return
                   }
-                  // If no image, let the default paste behavior continue
+                  if (content.mime === "text/plain" && content.data) {
+                    input.insertText(content.data)
+                  }
+                  return
                 }
                 if (keybind.match("input_clear", e) && store.prompt.input !== "") {
                   input.clear()
@@ -936,8 +941,19 @@ export function Prompt(props: PromptProps) {
                 // Replace CRLF first, then any remaining CR
                 const normalizedText = decodePasteBytes(event.bytes).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
                 const pastedContent = normalizedText.trim()
-                if (!pastedContent) {
-                  command.trigger("prompt.paste")
+
+                // If the bracketed paste is empty or contains binary-looking data,
+                // try reading the clipboard directly (handles image paste on macOS)
+                if (!pastedContent || /[\x00-\x08\x0e-\x1f]/.test(pastedContent)) {
+                  event.preventDefault()
+                  const clip = await Clipboard.read()
+                  if (clip?.mime.startsWith("image/")) {
+                    await pasteImage({
+                      filename: "clipboard",
+                      mime: clip.mime,
+                      content: clip.data,
+                    })
+                  }
                   return
                 }
 

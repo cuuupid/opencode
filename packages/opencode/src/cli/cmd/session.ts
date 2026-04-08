@@ -42,7 +42,8 @@ function pagerCmd(): string[] {
 export const SessionCommand = cmd({
   command: "session",
   describe: "manage sessions",
-  builder: (yargs: Argv) => yargs.command(SessionListCommand).command(SessionDeleteCommand).demandCommand(),
+  builder: (yargs: Argv) =>
+    yargs.command(SessionListCommand).command(SessionDeleteCommand).command(SessionRenameCommand).demandCommand(),
   async handler() {},
 })
 
@@ -51,14 +52,14 @@ export const SessionDeleteCommand = cmd({
   describe: "delete a session",
   builder: (yargs: Argv) => {
     return yargs.positional("sessionID", {
-      describe: "session ID to delete",
+      describe: "session ID or slug to delete",
       type: "string",
       demandOption: true,
     })
   },
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
-      const sessionID = SessionID.make(args.sessionID)
+      const sessionID = Session.resolve(args.sessionID)
       try {
         await Session.get(sessionID)
       } catch {
@@ -67,6 +68,44 @@ export const SessionDeleteCommand = cmd({
       }
       await Session.remove(sessionID)
       UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Session ${args.sessionID} deleted` + UI.Style.TEXT_NORMAL)
+    })
+  },
+})
+
+export const SessionRenameCommand = cmd({
+  command: "rename <sessionID> <slug>",
+  describe: "rename a session slug",
+  builder: (yargs: Argv) => {
+    return yargs
+      .positional("sessionID", {
+        describe: "session ID or slug",
+        type: "string",
+        demandOption: true,
+      })
+      .positional("slug", {
+        describe: "new slug (lowercase, dashes, e.g. rebrand-to-iris)",
+        type: "string",
+        demandOption: true,
+      })
+  },
+  handler: async (args) => {
+    await bootstrap(process.cwd(), async () => {
+      const sessionID = Session.resolve(args.sessionID)
+      const slug = args.slug
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/^-|-$/g, "")
+      if (!slug) {
+        UI.error("Slug cannot be empty")
+        process.exit(1)
+      }
+      try {
+        await Session.setSlug({ sessionID, slug })
+      } catch {
+        UI.error(`Session not found: ${args.sessionID}`)
+        process.exit(1)
+      }
+      UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Session renamed to ${slug}` + UI.Style.TEXT_NORMAL)
     })
   },
 })
@@ -130,16 +169,16 @@ export const SessionListCommand = cmd({
 function formatSessionTable(sessions: Session.Info[]): string {
   const lines: string[] = []
 
-  const maxIdWidth = Math.max(20, ...sessions.map((s) => s.id.length))
+  const maxSlugWidth = Math.max(15, ...sessions.map((s) => s.slug.length))
   const maxTitleWidth = Math.max(25, ...sessions.map((s) => s.title.length))
 
-  const header = `Session ID${" ".repeat(maxIdWidth - 10)}  Title${" ".repeat(maxTitleWidth - 5)}  Updated`
+  const header = `Slug${" ".repeat(maxSlugWidth - 4)}  Title${" ".repeat(maxTitleWidth - 5)}  Updated`
   lines.push(header)
   lines.push("─".repeat(header.length))
   for (const session of sessions) {
     const truncatedTitle = Locale.truncate(session.title, maxTitleWidth)
     const timeStr = Locale.todayTimeOrDateTime(session.time.updated)
-    const line = `${session.id.padEnd(maxIdWidth)}  ${truncatedTitle.padEnd(maxTitleWidth)}  ${timeStr}`
+    const line = `${session.slug.padEnd(maxSlugWidth)}  ${truncatedTitle.padEnd(maxTitleWidth)}  ${timeStr}`
     lines.push(line)
   }
 
@@ -149,6 +188,7 @@ function formatSessionTable(sessions: Session.Info[]): string {
 function formatSessionJSON(sessions: Session.Info[]): string {
   const jsonData = sessions.map((session) => ({
     id: session.id,
+    slug: session.slug,
     title: session.title,
     updated: session.time.updated,
     created: session.time.created,

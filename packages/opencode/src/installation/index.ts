@@ -62,7 +62,7 @@ export namespace Installation {
 
   export const VERSION = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "local"
   export const CHANNEL = typeof OPENCODE_CHANNEL === "string" ? OPENCODE_CHANNEL : "local"
-  export const USER_AGENT = `opencode/${CHANNEL}/${VERSION}/${Flag.OPENCODE_CLIENT}`
+  export const USER_AGENT = `iris/${CHANNEL}/${VERSION}/${Flag.OPENCODE_CLIENT}`
 
   export function isPreview() {
     return CHANNEL !== "latest"
@@ -171,7 +171,7 @@ export namespace Installation {
         )
 
         const methodImpl = Effect.fn("Installation.method")(function* () {
-          if (process.execPath.includes(path.join(".opencode", "bin"))) return "curl" as Method
+          if (process.execPath.includes(path.join(".iris", "bin"))) return "curl" as Method
           if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
           const exec = process.execPath.toLowerCase()
 

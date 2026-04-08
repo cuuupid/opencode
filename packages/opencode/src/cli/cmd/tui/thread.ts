@@ -14,6 +14,7 @@ import type { EventSource } from "./context/sdk"
 import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
 import { TuiConfig } from "@/config/tui"
 import { Instance } from "@/project/instance"
+import { Session } from "@/session"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -64,12 +65,12 @@ async function input(value?: string) {
 
 export const TuiThreadCommand = cmd({
   command: "$0 [project]",
-  describe: "start opencode tui",
+  describe: "start iris tui",
   builder: (yargs) =>
     withNetworkOptions(yargs)
       .positional("project", {
         type: "string",
-        describe: "path to start opencode in",
+        describe: "path to start iris in",
       })
       .option("model", {
         type: "string",
@@ -207,7 +208,9 @@ export const TuiThreadCommand = cmd({
           events: transport.events,
           args: {
             continue: args.continue,
-            sessionID: args.session,
+            sessionID: args.session
+              ? await Instance.provide({ directory: cwd, fn: () => Session.resolve(args.session!) })
+              : undefined,
             agent: args.agent,
             model: args.model,
             prompt,

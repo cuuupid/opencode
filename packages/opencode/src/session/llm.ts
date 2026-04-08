@@ -258,7 +258,7 @@ export namespace LLM {
               "x-opencode-client": Flag.OPENCODE_CLIENT,
             }
           : {
-              "User-Agent": `opencode/${Installation.VERSION}`,
+              "User-Agent": `iris/${Installation.VERSION}`,
             }),
         ...input.model.headers,
         ...headers,

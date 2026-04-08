@@ -1,0 +1,23 @@
+Use this tool to save something you think is worth remembering across sessions. Memories decay over time unless refreshed.
+
+## When to Use This Tool
+
+Use this tool when:
+1. The user tells you something important about their preferences, workflow, or decisions
+2. You discover a pattern, bug, or insight that would be valuable in future sessions
+3. The user explicitly asks you to remember something
+4. A significant decision is made (architecture, tooling, approach)
+5. You learn something about the codebase that isn't obvious from the code itself
+
+## When NOT to Use This Tool
+
+- Don't save trivial or temporary information
+- Don't save things that are already in the codebase (comments, docs, config)
+- Don't save every single interaction
+
+## Parameters
+
+- `content`: The full detailed memory content
+- `summary`: A brief 1-line summary (shown in the sidebar)
+- `tags`: Array of short tags for categorization
+- `days`: How long before this memory decays (default: 30)

@@ -33,7 +33,9 @@ import { DbCommand } from "./cli/cmd/db"
 import path from "path"
 import { Global } from "./global"
 import { JsonMigration } from "./storage/json-migration"
-import { Database } from "./storage/db"
+import { Database, desc, eq } from "./storage/db"
+import { SessionTable } from "./session/session.sql"
+import { ProjectTable } from "./project/project.sql"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -47,9 +49,17 @@ process.on("uncaughtException", (e) => {
   })
 })
 
+const EXEC = "iris"
+
+// Suppress stderr during shell completion so logs don't pollute tab results
+if (process.argv.includes("--get-yargs-completions")) {
+  const noop = () => true
+  process.stderr.write = noop as typeof process.stderr.write
+}
+
 let cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName(EXEC)
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -65,27 +75,33 @@ let cli = yargs(hideBin(process.argv))
     choices: ["DEBUG", "INFO", "WARN", "ERROR"],
   })
   .middleware(async (opts) => {
+    const completing = process.argv.includes("--get-yargs-completions")
+
     await Log.init({
-      print: process.argv.includes("--print-logs"),
-      dev: Installation.isLocal(),
-      level: (() => {
-        if (opts.logLevel) return opts.logLevel as Log.Level
-        if (Installation.isLocal()) return "DEBUG"
-        return "INFO"
-      })(),
+      print: !completing && process.argv.includes("--print-logs"),
+      dev: !completing && Installation.isLocal(),
+      level: completing
+        ? "ERROR"
+        : (() => {
+            if (opts.logLevel) return opts.logLevel as Log.Level
+            if (Installation.isLocal()) return "DEBUG"
+            return "INFO"
+          })(),
     })
 
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
     process.env.OPENCODE_PID = String(process.pid)
 
-    Log.Default.info("opencode", {
-      version: Installation.VERSION,
-      args: process.argv.slice(2),
-    })
+    if (!completing) {
+      Log.Default.info("iris", {
+        version: Installation.VERSION,
+        args: process.argv.slice(2),
+      })
+    }
 
-    const marker = path.join(Global.Path.data, "opencode.db")
-    if (!(await Filesystem.exists(marker))) {
+    const marker = path.join(Global.Path.data, "iris.db")
+    if (!(await Filesystem.exists(marker)) && !completing) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)
       const width = 36
@@ -122,7 +138,48 @@ let cli = yargs(hideBin(process.argv))
     }
   })
   .usage("\n" + UI.logo())
-  .completion("completion", "generate shell completion script")
+  .completion(
+    "completion",
+    "generate shell completion script",
+    async (
+      _current: string,
+      _argv: Record<string, unknown>,
+      defaultCompletions: () => void,
+      done: (completions: string[]) => void,
+    ) => {
+      // argv after --get-yargs-completions: [command, ...words, current]
+      // For "iris -s <TAB>", words = ["iris", "-s", ""]
+      const args = process.argv
+      const prev = args.at(-2)
+      if (prev === "-s" || prev === "--session") {
+        try {
+          const db = Database.Client()
+          const cwd = Filesystem.resolve(process.cwd())
+          const project = db
+            .select({ id: ProjectTable.id })
+            .from(ProjectTable)
+            .where(eq(ProjectTable.worktree, cwd))
+            .get()
+          if (project) {
+            const rows = db
+              .select({ slug: SessionTable.slug })
+              .from(SessionTable)
+              .where(eq(SessionTable.project_id, project.id))
+              .orderBy(desc(SessionTable.time_updated))
+              .limit(20)
+              .all()
+            done(rows.map((r) => r.slug))
+          } else {
+            done([])
+          }
+        } catch {
+          done([])
+        }
+        return
+      }
+      defaultCompletions()
+    },
+  )
   .command(AcpCommand)
   .command(McpCommand)
   .command(TuiThreadCommand)

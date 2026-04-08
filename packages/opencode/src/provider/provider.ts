@@ -401,23 +401,25 @@ export namespace Provider {
       }
     },
     openrouter: async () => {
+      const config = await Config.get()
+      const name = config.app_name ?? ""
       return {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "opencode",
+            ...(name ? { "HTTP-Referer": name, "X-Title": name } : {}),
           },
         },
       }
     },
     vercel: async () => {
+      const config = await Config.get()
+      const name = config.app_name ?? ""
       return {
         autoload: false,
         options: {
           headers: {
-            "http-referer": "https://opencode.ai/",
-            "x-title": "opencode",
+            ...(name ? { "http-referer": name, "x-title": name } : {}),
           },
         },
       }
@@ -511,12 +513,13 @@ export namespace Provider {
       }
     },
     zenmux: async () => {
+      const config = await Config.get()
+      const name = config.app_name ?? ""
       return {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "opencode",
+            ...(name ? { "HTTP-Referer": name, "X-Title": name } : {}),
           },
         },
       }
@@ -535,7 +538,7 @@ export namespace Provider {
       const providerConfig = config.provider?.["gitlab"]
 
       const aiGatewayHeaders = {
-        "User-Agent": `opencode/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
+        "User-Agent": `iris/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
         "anthropic-beta": "context-1m-2025-08-07",
         ...(providerConfig?.options?.aiGatewayHeaders || {}),
       }
@@ -686,7 +689,7 @@ export namespace Provider {
       if (!apiToken) {
         throw new Error(
           "CLOUDFLARE_API_TOKEN (or CF_AIG_TOKEN) is required for Cloudflare AI Gateway. " +
-            "Set it via environment variable or run `opencode auth cloudflare-ai-gateway`.",
+            "Set it via environment variable or run `iris auth cloudflare-ai-gateway`.",
         )
       }
 
@@ -728,22 +731,25 @@ export namespace Provider {
       }
     },
     cerebras: async () => {
+      const config = await Config.get()
+      const name = config.app_name ?? ""
       return {
         autoload: false,
         options: {
           headers: {
-            "X-Cerebras-3rd-Party-Integration": "opencode",
+            ...(name ? { "X-Cerebras-3rd-Party-Integration": name } : {}),
           },
         },
       }
     },
     kilo: async () => {
+      const config = await Config.get()
+      const name = config.app_name ?? ""
       return {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "opencode",
+            ...(name ? { "HTTP-Referer": name, "X-Title": name } : {}),
           },
         },
       }

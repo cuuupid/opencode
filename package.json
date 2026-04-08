@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode",
+  "name": "iris",
   "description": "AI-powered development tool",
   "private": true,
   "type": "module",
@@ -15,7 +15,8 @@
     "prepare": "husky",
     "random": "echo 'Random script'",
     "hello": "echo 'Hello World!'",
-    "test": "echo 'do not run tests from root' && exit 1"
+    "test": "echo 'do not run tests from root' && exit 1",
+    "make": "bun run --cwd packages/opencode build --single"
   },
   "workspaces": {
     "packages": [

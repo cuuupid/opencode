@@ -32,7 +32,7 @@ export namespace Clipboard {
     const os = platform()
 
     if (os === "darwin") {
-      const tmpfile = path.join(tmpdir(), "opencode-clipboard.png")
+      const tmpfile = path.join(tmpdir(), "iris-clipboard.png")
       try {
         await Process.run(
           [
@@ -83,6 +83,12 @@ export namespace Clipboard {
       if (x11.stdout.byteLength > 0) {
         return { data: Buffer.from(x11.stdout).toString("base64"), mime: "image/png" }
       }
+    }
+
+    if (os === "darwin") {
+      const result = await Process.run(["pbpaste"], { nothrow: true })
+      const text = result.stdout.toString()
+      if (text) return { data: text, mime: "text/plain" }
     }
 
     const text = await clipboardy.read().catch(() => {})

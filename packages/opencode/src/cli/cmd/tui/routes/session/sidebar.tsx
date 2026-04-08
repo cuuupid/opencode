@@ -1,16 +1,45 @@
 import { useSync } from "@tui/context/sync"
-import { createMemo, For, Show, Switch, Match } from "solid-js"
+import { createMemo, createSignal, For, Show, Switch, Match, type JSX, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../../context/theme"
 import { Locale } from "@/util/locale"
 import path from "path"
-import type { AssistantMessage } from "@opencode-ai/sdk/v2"
+import type { AssistantMessage, FilePart } from "@opencode-ai/sdk/v2"
 import { Global } from "@/global"
 import { Installation } from "@/installation"
 import { useKeybind } from "../../context/keybind"
 import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
+import { useSDK } from "../../context/sdk"
+
+function Section(props: {
+  title: string
+  expanded: boolean
+  onToggle: () => void
+  count?: number
+  summary?: string
+  children: JSX.Element
+}) {
+  const { theme } = useTheme()
+  return (
+    <box>
+      <box flexDirection="row" gap={1} onMouseDown={props.onToggle}>
+        <text fg={theme.text}>{props.expanded ? "▼" : "▶"}</text>
+        <text fg={theme.text}>
+          <b>{props.title}</b>
+          <Show when={!props.expanded && props.summary}>
+            <span style={{ fg: theme.textMuted }}> ({props.summary})</span>
+          </Show>
+          <Show when={!props.expanded && props.count !== undefined && !props.summary}>
+            <span style={{ fg: theme.textMuted }}> ({props.count})</span>
+          </Show>
+        </text>
+      </box>
+      <Show when={props.expanded}>{props.children}</Show>
+    </box>
+  )
+}
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const sync = useSync()
@@ -21,16 +50,42 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
 
   const [expanded, setExpanded] = createStore({
+    context: true,
+    memory: false,
     mcp: true,
-    diff: true,
-    todo: true,
     lsp: true,
+    todo: true,
+    diff: true,
+    images: true,
   })
 
-  // Sort MCP servers alphabetically for consistent display order
-  const mcpEntries = createMemo(() => Object.entries(sync.data.mcp).sort(([a], [b]) => a.localeCompare(b)))
+  const [rules, setRules] = createSignal<{ id: string; content: string; tag?: string }[]>([])
+  const [eidetic, setEidetic] = createSignal<{ id: string; summary: string; relevance: number }[]>([])
 
-  // Count connected and error MCP servers for collapsed header display
+  function refreshMemory() {
+    sdk
+      .fetch(sdk.url + "/memory/rule")
+      .then((r) => r.json())
+      .then((data) => setRules(data ?? []))
+      .catch(() => {})
+    sdk
+      .fetch(sdk.url + "/memory/eidetic")
+      .then((r) => r.json())
+      .then((data) =>
+        setEidetic(
+          (data ?? []).map((m: any) => ({
+            id: m.id,
+            summary: m.summary,
+            relevance: m.relevance,
+          })),
+        ),
+      )
+      .catch(() => {})
+  }
+
+  onMount(refreshMemory)
+
+  const mcpEntries = createMemo(() => Object.entries(sync.data.mcp).sort(([a], [b]) => a.localeCompare(b)))
   const connectedMcpCount = createMemo(() => mcpEntries().filter(([_, item]) => item.status === "connected").length)
   const errorMcpCount = createMemo(
     () =>
@@ -42,10 +97,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
 
   const cost = createMemo(() => {
     const total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(total)
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(total)
   })
 
   const context = createMemo(() => {
@@ -60,6 +112,49 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     }
   })
 
+  const sdk = useSDK()
+
+  const MIME_LABEL: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/svg+xml": "svg",
+    "application/pdf": "pdf",
+    "text/plain": "txt",
+    "application/x-directory": "dir",
+  }
+
+  const attachments = createMemo(() => {
+    const result: { filename: string; mime: string; label: string; messageID: string; partID: string; role: string }[] =
+      []
+    for (const msg of messages()) {
+      for (const part of sync.data.part[msg.id] ?? []) {
+        if (part.type !== "file") continue
+        const fp = part as FilePart
+        const ext = MIME_LABEL[fp.mime] ?? fp.mime.split("/")[1] ?? "file"
+        const name = fp.filename && fp.filename !== "clipboard" ? fp.filename : undefined
+        result.push({
+          filename: name ?? ext,
+          mime: fp.mime,
+          label: ext,
+          messageID: msg.id,
+          partID: fp.id,
+          role: msg.role,
+        })
+      }
+    }
+    return result
+  })
+
+  async function removeAttachment(att: { sessionID: string; messageID: string; partID: string }) {
+    await sdk.client.part.delete({
+      sessionID: att.sessionID,
+      messageID: att.messageID,
+      partID: att.partID,
+    })
+  }
+
   const directory = useDirectory()
   const kv = useKV()
 
@@ -67,6 +162,13 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     sync.data.provider.some((x) => x.id !== "opencode" || Object.values(x.models).some((y) => y.cost?.input !== 0)),
   )
   const gettingStartedDismissed = createMemo(() => kv.get("dismissed_getting_started", false))
+
+  const mcpSummary = createMemo(() => {
+    const parts = []
+    if (connectedMcpCount() > 0) parts.push(`${connectedMcpCount()} active`)
+    if (errorMcpCount() > 0) parts.push(`${errorMcpCount()} error${errorMcpCount() > 1 ? "s" : ""}`)
+    return parts.join(", ")
+  })
 
   return (
     <Show when={session()}>
@@ -98,173 +200,227 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 <text fg={theme.textMuted}>{session().share!.url}</text>
               </Show>
             </box>
-            <box>
-              <text fg={theme.text}>
-                <b>Context</b>
-              </text>
+
+            <Section
+              title="Context"
+              expanded={expanded.context}
+              onToggle={() => setExpanded("context", !expanded.context)}
+              summary={context()?.tokens ? `${context()!.tokens} tokens` : undefined}
+            >
               <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
-            </box>
-            <Show when={mcpEntries().length > 0}>
-              <box>
-                <box
-                  flexDirection="row"
-                  gap={1}
-                  onMouseDown={() => mcpEntries().length > 2 && setExpanded("mcp", !expanded.mcp)}
-                >
-                  <Show when={mcpEntries().length > 2}>
-                    <text fg={theme.text}>{expanded.mcp ? "▼" : "▶"}</text>
-                  </Show>
-                  <text fg={theme.text}>
-                    <b>MCP</b>
-                    <Show when={!expanded.mcp}>
-                      <span style={{ fg: theme.textMuted }}>
-                        {" "}
-                        ({connectedMcpCount()} active
-                        {errorMcpCount() > 0 ? `, ${errorMcpCount()} error${errorMcpCount() > 1 ? "s" : ""}` : ""})
-                      </span>
-                    </Show>
+            </Section>
+
+            <Show when={rules().length > 0 || eidetic().length > 0}>
+              <Section
+                title="Memory"
+                expanded={expanded.memory}
+                onToggle={() => setExpanded("memory", !expanded.memory)}
+                summary={`${rules().length}R ${eidetic().length}E`}
+              >
+                <Show when={rules().length > 0}>
+                  <text fg={theme.textMuted}>
+                    <b>Rules</b> ({rules().length})
                   </text>
-                </box>
-                <Show when={mcpEntries().length <= 2 || expanded.mcp}>
-                  <For each={mcpEntries()}>
-                    {([key, item]) => (
+                  <For each={rules()}>
+                    {(rule) => (
                       <box flexDirection="row" gap={1}>
-                        <text
-                          flexShrink={0}
-                          style={{
-                            fg: (
-                              {
-                                connected: theme.success,
-                                failed: theme.error,
-                                disabled: theme.textMuted,
-                                needs_auth: theme.warning,
-                                needs_client_registration: theme.error,
-                              } as Record<string, typeof theme.success>
-                            )[item.status],
-                          }}
-                        >
+                        <text flexShrink={0} fg={theme.primary}>
                           •
                         </text>
-                        <text fg={theme.text} wrapMode="word">
-                          {key}{" "}
-                          <span style={{ fg: theme.textMuted }}>
-                            <Switch fallback={item.status}>
-                              <Match when={item.status === "connected"}>Connected</Match>
-                              <Match when={item.status === "failed" && item}>{(val) => <i>{val().error}</i>}</Match>
-                              <Match when={item.status === "disabled"}>Disabled</Match>
-                              <Match when={(item.status as string) === "needs_auth"}>Needs auth</Match>
-                              <Match when={(item.status as string) === "needs_client_registration"}>
-                                Needs client ID
-                              </Match>
-                            </Switch>
-                          </span>
+                        <text fg={theme.textMuted} wrapMode="word">
+                          {rule.tag ? `[${rule.tag}] ` : ""}
+                          {rule.content}
                         </text>
                       </box>
                     )}
                   </For>
                 </Show>
-              </box>
-            </Show>
-            <box>
-              <box
-                flexDirection="row"
-                gap={1}
-                onMouseDown={() => sync.data.lsp.length > 2 && setExpanded("lsp", !expanded.lsp)}
-              >
-                <Show when={sync.data.lsp.length > 2}>
-                  <text fg={theme.text}>{expanded.lsp ? "▼" : "▶"}</text>
-                </Show>
-                <text fg={theme.text}>
-                  <b>LSP</b>
-                </text>
-              </box>
-              <Show when={sync.data.lsp.length <= 2 || expanded.lsp}>
-                <Show when={sync.data.lsp.length === 0}>
+                <Show when={eidetic().length > 0}>
                   <text fg={theme.textMuted}>
-                    {sync.data.config.lsp === false
-                      ? "LSPs have been disabled in settings"
-                      : "LSPs will activate as files are read"}
+                    <b>Eidetic</b> ({eidetic().length})
                   </text>
+                  <For each={eidetic()}>
+                    {(mem) => (
+                      <box flexDirection="row" gap={1}>
+                        <text flexShrink={0} fg={mem.relevance > 0.5 ? theme.success : theme.warning}>
+                          •
+                        </text>
+                        <text fg={theme.textMuted} wrapMode="word">
+                          {mem.summary}
+                        </text>
+                      </box>
+                    )}
+                  </For>
                 </Show>
-                <For each={sync.data.lsp}>
-                  {(item) => (
-                    <box flexDirection="row" gap={1}>
+              </Section>
+            </Show>
+
+            <Show when={attachments().length > 0}>
+              <Section
+                title="Attachments"
+                expanded={expanded.images}
+                onToggle={() => setExpanded("images", !expanded.images)}
+                count={attachments().length}
+              >
+                <For each={attachments()}>
+                  {(att) => (
+                    <box flexDirection="row" gap={1} justifyContent="space-between">
+                      <box flexDirection="row" gap={1} flexGrow={1}>
+                        <text
+                          flexShrink={0}
+                          fg={
+                            att.mime.startsWith("image/")
+                              ? theme.accent
+                              : att.mime === "application/pdf"
+                                ? theme.primary
+                                : theme.textMuted
+                          }
+                        >
+                          •
+                        </text>
+                        <text fg={theme.text} wrapMode="none">
+                          {att.filename}
+                          <span style={{ fg: theme.textMuted }}> {att.label}</span>
+                        </text>
+                      </box>
                       <text
                         flexShrink={0}
-                        style={{
-                          fg: {
-                            connected: theme.success,
-                            error: theme.error,
-                          }[item.status],
-                        }}
+                        fg={theme.textMuted}
+                        onMouseDown={() =>
+                          removeAttachment({
+                            sessionID: props.sessionID,
+                            messageID: att.messageID,
+                            partID: att.partID,
+                          })
+                        }
                       >
-                        •
-                      </text>
-                      <text fg={theme.textMuted}>
-                        {item.id} {item.root}
+                        ✕
                       </text>
                     </box>
                   )}
                 </For>
-              </Show>
-            </box>
-            <Show when={todo().length > 0 && todo().some((t) => t.status !== "completed")}>
-              <box>
-                <box
-                  flexDirection="row"
-                  gap={1}
-                  onMouseDown={() => todo().length > 2 && setExpanded("todo", !expanded.todo)}
-                >
-                  <Show when={todo().length > 2}>
-                    <text fg={theme.text}>{expanded.todo ? "▼" : "▶"}</text>
-                  </Show>
-                  <text fg={theme.text}>
-                    <b>Todo</b>
-                  </text>
-                </box>
-                <Show when={todo().length <= 2 || expanded.todo}>
-                  <For each={todo()}>{(todo) => <TodoItem status={todo.status} content={todo.content} />}</For>
-                </Show>
-              </box>
+              </Section>
             </Show>
+
+            <Show when={mcpEntries().length > 0}>
+              <Section
+                title="MCP"
+                expanded={expanded.mcp}
+                onToggle={() => setExpanded("mcp", !expanded.mcp)}
+                summary={mcpSummary()}
+              >
+                <For each={mcpEntries()}>
+                  {([key, item]) => (
+                    <box flexDirection="row" gap={1}>
+                      <text
+                        flexShrink={0}
+                        style={{
+                          fg: (
+                            {
+                              connected: theme.success,
+                              failed: theme.error,
+                              disabled: theme.textMuted,
+                              needs_auth: theme.warning,
+                              needs_client_registration: theme.error,
+                            } as Record<string, typeof theme.success>
+                          )[item.status],
+                        }}
+                      >
+                        •
+                      </text>
+                      <text fg={theme.text} wrapMode="word">
+                        {key}{" "}
+                        <span style={{ fg: theme.textMuted }}>
+                          <Switch fallback={item.status}>
+                            <Match when={item.status === "connected"}>Connected</Match>
+                            <Match when={item.status === "failed" && item}>{(val) => <i>{val().error}</i>}</Match>
+                            <Match when={item.status === "disabled"}>Disabled</Match>
+                            <Match when={(item.status as string) === "needs_auth"}>Needs auth</Match>
+                            <Match when={(item.status as string) === "needs_client_registration"}>
+                              Needs client ID
+                            </Match>
+                          </Switch>
+                        </span>
+                      </text>
+                    </box>
+                  )}
+                </For>
+              </Section>
+            </Show>
+
+            <Section
+              title="LSP"
+              expanded={expanded.lsp}
+              onToggle={() => setExpanded("lsp", !expanded.lsp)}
+              count={sync.data.lsp.length}
+            >
+              <Show when={sync.data.lsp.length === 0}>
+                <text fg={theme.textMuted}>
+                  {sync.data.config.lsp === false
+                    ? "LSPs have been disabled in settings"
+                    : "LSPs will activate as files are read"}
+                </text>
+              </Show>
+              <For each={sync.data.lsp}>
+                {(item) => (
+                  <box flexDirection="row" gap={1}>
+                    <text
+                      flexShrink={0}
+                      style={{
+                        fg: {
+                          connected: theme.success,
+                          error: theme.error,
+                        }[item.status],
+                      }}
+                    >
+                      •
+                    </text>
+                    <text fg={theme.textMuted}>
+                      {item.id} {item.root}
+                    </text>
+                  </box>
+                )}
+              </For>
+            </Section>
+
+            <Show when={todo().length > 0 && todo().some((t) => t.status !== "completed")}>
+              <Section
+                title="Todo"
+                expanded={expanded.todo}
+                onToggle={() => setExpanded("todo", !expanded.todo)}
+                count={todo().filter((t) => t.status !== "completed").length}
+              >
+                <For each={todo()}>{(t) => <TodoItem status={t.status} content={t.content} />}</For>
+              </Section>
+            </Show>
+
             <Show when={diff().length > 0}>
-              <box>
-                <box
-                  flexDirection="row"
-                  gap={1}
-                  onMouseDown={() => diff().length > 2 && setExpanded("diff", !expanded.diff)}
-                >
-                  <Show when={diff().length > 2}>
-                    <text fg={theme.text}>{expanded.diff ? "▼" : "▶"}</text>
-                  </Show>
-                  <text fg={theme.text}>
-                    <b>Modified Files</b>
-                  </text>
-                </box>
-                <Show when={diff().length <= 2 || expanded.diff}>
-                  <For each={diff() || []}>
-                    {(item) => {
-                      return (
-                        <box flexDirection="row" gap={1} justifyContent="space-between">
-                          <text fg={theme.textMuted} wrapMode="none">
-                            {item.file}
-                          </text>
-                          <box flexDirection="row" gap={1} flexShrink={0}>
-                            <Show when={item.additions}>
-                              <text fg={theme.diffAdded}>+{item.additions}</text>
-                            </Show>
-                            <Show when={item.deletions}>
-                              <text fg={theme.diffRemoved}>-{item.deletions}</text>
-                            </Show>
-                          </box>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </Show>
-              </box>
+              <Section
+                title="Modified Files"
+                expanded={expanded.diff}
+                onToggle={() => setExpanded("diff", !expanded.diff)}
+                count={diff().length}
+              >
+                <For each={diff() || []}>
+                  {(item) => (
+                    <box flexDirection="row" gap={1} justifyContent="space-between">
+                      <text fg={theme.textMuted} wrapMode="none">
+                        {item.file}
+                      </text>
+                      <box flexDirection="row" gap={1} flexShrink={0}>
+                        <Show when={item.additions}>
+                          <text fg={theme.diffAdded}>+{item.additions}</text>
+                        </Show>
+                        <Show when={item.deletions}>
+                          <text fg={theme.diffRemoved}>-{item.deletions}</text>
+                        </Show>
+                      </box>
+                    </box>
+                  )}
+                </For>
+              </Section>
             </Show>
           </box>
         </scrollbox>
@@ -292,7 +448,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                     ✕
                   </text>
                 </box>
-                <text fg={theme.textMuted}>OpenCode includes free models so you can start immediately.</text>
+                <text fg={theme.textMuted}>Iris includes free models so you can start immediately.</text>
                 <text fg={theme.textMuted}>
                   Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
                 </text>
@@ -308,9 +464,9 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
             <span style={{ fg: theme.text }}>{directory().split("/").at(-1)}</span>
           </text>
           <text fg={theme.textMuted}>
-            <span style={{ fg: theme.success }}>•</span> <b>Open</b>
+            <span style={{ fg: theme.success }}>•</span>{" "}
             <span style={{ fg: theme.text }}>
-              <b>Code</b>
+              <b>Iris</b>
             </span>{" "}
             <span>{Installation.VERSION}</span>
           </text>

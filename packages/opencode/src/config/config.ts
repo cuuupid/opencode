@@ -122,7 +122,10 @@ export namespace Config {
 
     // Project config overrides global and remote config.
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of await ConfigPaths.projectFiles("opencode", Instance.directory, Instance.worktree)) {
+      for (const file of [
+        ...(await ConfigPaths.projectFiles("iris", Instance.directory, Instance.worktree)),
+        ...(await ConfigPaths.projectFiles("opencode", Instance.directory, Instance.worktree)),
+      ]) {
         result = mergeConfigConcatArrays(result, await loadFile(file))
       }
     }
@@ -142,7 +145,7 @@ export namespace Config {
 
     for (const dir of unique(directories)) {
       if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-        for (const file of ["opencode.jsonc", "opencode.json"]) {
+        for (const file of ["iris.jsonc", "iris.json", "opencode.jsonc", "opencode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
@@ -208,7 +211,7 @@ export namespace Config {
     // which would fail on system directories requiring elevated permissions
     // This way it only loads config file and not skills/plugins/commands
     if (existsSync(managedDir)) {
-      for (const file of ["opencode.jsonc", "opencode.json"]) {
+      for (const file of ["iris.jsonc", "iris.json", "opencode.jsonc", "opencode.json"]) {
         result = mergeConfigConcatArrays(result, await loadFile(path.join(managedDir, file)))
       }
     }
@@ -1089,6 +1092,12 @@ export namespace Config {
         .describe(
           "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
         ),
+      app_name: z
+        .string()
+        .optional()
+        .describe(
+          "App name sent to providers like OpenRouter in HTTP-Referer and X-Title headers. Defaults to empty string.",
+        ),
       username: z
         .string()
         .optional()
@@ -1242,6 +1251,11 @@ export namespace Config {
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.jsonc"))),
     )
+    result = pipe(
+      result,
+      mergeDeep(await loadFile(path.join(Global.Path.config, "iris.json"))),
+      mergeDeep(await loadFile(path.join(Global.Path.config, "iris.jsonc"))),
+    )
 
     const legacy = path.join(Global.Path.config, "config")
     if (existsSync(legacy)) {
@@ -1354,7 +1368,7 @@ export namespace Config {
   }
 
   function globalConfigFile() {
-    const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
+    const candidates = ["iris.jsonc", "iris.json", "opencode.jsonc", "opencode.json", "config.json"].map((file) =>
       path.join(Global.Path.config, file),
     )
     for (const file of candidates) {

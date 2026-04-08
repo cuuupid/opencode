@@ -26,6 +26,7 @@ import { ProjectRoutes } from "./routes/project"
 import { SessionRoutes } from "./routes/session"
 import { PtyRoutes } from "./routes/pty"
 import { McpRoutes } from "./routes/mcp"
+import { MemoryRoutes } from "./routes/memory"
 import { FileRoutes } from "./routes/file"
 import { ConfigRoutes } from "./routes/config"
 import { ExperimentalRoutes } from "./routes/experimental"
@@ -80,7 +81,7 @@ export namespace Server {
         if (c.req.method === "OPTIONS") return next()
         const password = Flag.OPENCODE_SERVER_PASSWORD
         if (!password) return next()
-        const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
+        const username = Flag.OPENCODE_SERVER_USERNAME ?? "iris"
         return basicAuth({ username, password })(c, next)
       })
       .use(async (c, next) => {
@@ -222,9 +223,9 @@ export namespace Server {
         openAPIRouteHandler(app, {
           documentation: {
             info: {
-              title: "opencode",
+              title: "iris",
               version: "0.0.3",
-              description: "opencode api",
+              description: "iris api",
             },
             openapi: "3.1.1",
           },
@@ -251,6 +252,7 @@ export namespace Server {
       .route("/", EventRoutes())
       .route("/mcp", McpRoutes())
       .route("/tui", TuiRoutes())
+      .route("/memory", MemoryRoutes())
       .post(
         "/instance/dispose",
         describeRoute({
@@ -499,11 +501,11 @@ export namespace Server {
       .all("/*", async (c) => {
         const path = c.req.path
 
-        const response = await proxy(`https://app.opencode.ai${path}`, {
+        const response = await proxy(`https://app.iris.dev${path}`, {
           ...c.req,
           headers: {
             ...c.req.raw.headers,
-            host: "app.opencode.ai",
+            host: "app.iris.dev",
           },
         })
         response.headers.set(
@@ -519,9 +521,9 @@ export namespace Server {
     const result = await generateSpecs(Default(), {
       documentation: {
         info: {
-          title: "opencode",
+          title: "iris",
           version: "1.0.0",
-          description: "opencode api",
+          description: "iris api",
         },
         openapi: "3.1.1",
       },

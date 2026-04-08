@@ -399,6 +399,48 @@ export namespace Session {
     },
   )
 
+  export const setSlug = fn(
+    z.object({
+      sessionID: SessionID.zod,
+      slug: z.string(),
+    }),
+    async (input) => {
+      return Database.use((db) => {
+        const row = db
+          .update(SessionTable)
+          .set({ slug: input.slug })
+          .where(eq(SessionTable.id, input.sessionID))
+          .returning()
+          .get()
+        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
+        const info = fromRow(row)
+        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        return info
+      })
+    },
+  )
+
+  export function bySlug(slug: string): Info | undefined {
+    const row = Database.use((db) =>
+      db
+        .select()
+        .from(SessionTable)
+        .where(and(eq(SessionTable.slug, slug), eq(SessionTable.project_id, Instance.project.id)))
+        .get(),
+    )
+    if (!row) return undefined
+    return fromRow(row)
+  }
+
+  /** Resolve a session ID or slug to a SessionID */
+  export function resolve(input: string): SessionID {
+    if (input.startsWith("ses_")) return SessionID.make(input)
+    const session = bySlug(input)
+    if (session) return session.id
+    // fall back to treating as raw ID
+    return SessionID.make(input)
+  }
+
   export const setArchived = fn(
     z.object({
       sessionID: SessionID.zod,

@@ -37,6 +37,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/util/error"
+import { Memory } from "../memory"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { TaskTool } from "@/tool/task"
@@ -659,6 +660,13 @@ export namespace SessionPrompt {
         ...(skills ? [skills] : []),
         ...(await InstructionPrompt.system()),
       ]
+
+      // Inject memory: rules (always) + eidetic (decaying context)
+      const rules = Memory.rulesPrompt()
+      if (rules) system.push(rules)
+      const eidetic = Memory.eideticPrompt()
+      if (eidetic) system.push(eidetic)
+
       const format = lastUser.format ?? { type: "text" }
       if (format.type === "json_schema") {
         system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
@@ -1992,10 +2000,21 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       if (!cleaned) return
 
       const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-      return Session.setTitle({ sessionID: input.session.id, title }).catch((err) => {
+      const slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 60)
+      await Session.setTitle({ sessionID: input.session.id, title }).catch((err) => {
         if (NotFoundError.isInstance(err)) return
         throw err
       })
+      if (slug) {
+        await Session.setSlug({ sessionID: input.session.id, slug }).catch((err) => {
+          if (NotFoundError.isInstance(err)) return
+          throw err
+        })
+      }
     }
   }
 }
