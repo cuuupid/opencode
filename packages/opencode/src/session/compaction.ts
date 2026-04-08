@@ -13,6 +13,7 @@ import { fn } from "@/util/fn"
 import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
+import { Memory } from "@/memory"
 import { ProviderTransform } from "@/provider/transform"
 import { ModelID, ProviderID } from "@/provider/schema"
 
@@ -292,6 +293,24 @@ When constructing the summary, try to stick to this template:
       }
     }
     if (processor.message.error) return "stop"
+
+    // Extract knowledge from compaction summary into memory catalog
+    try {
+      const parts = await MessageV2.parts(processor.message.id)
+      const text = parts
+        .filter((p): p is MessageV2.TextPart => p.type === "text")
+        .map((p) => p.text)
+        .join("\n")
+      if (text.length > 50) {
+        Memory.extractFromCompaction({
+          sessionID: input.sessionID,
+          summary: text,
+        })
+      }
+    } catch (err) {
+      log.debug("memory extraction failed", { error: err })
+    }
+
     Bus.publish(Event.Compacted, { sessionID: input.sessionID })
     return "continue"
   }

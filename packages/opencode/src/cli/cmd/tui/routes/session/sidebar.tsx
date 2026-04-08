@@ -59,15 +59,9 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     images: true,
   })
 
-  const [rules, setRules] = createSignal<{ id: string; content: string; tag?: string }[]>([])
   const [eidetic, setEidetic] = createSignal<{ id: string; summary: string; relevance: number }[]>([])
 
   function refreshMemory() {
-    sdk
-      .fetch(sdk.url + "/memory/rule")
-      .then((r) => r.json())
-      .then((data) => setRules(data ?? []))
-      .catch(() => {})
     sdk
       .fetch(sdk.url + "/memory/eidetic")
       .then((r) => r.json())
@@ -212,48 +206,25 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={theme.textMuted}>{cost()} spent</text>
             </Section>
 
-            <Show when={rules().length > 0 || eidetic().length > 0}>
+            <Show when={eidetic().length > 0}>
               <Section
                 title="Memory"
                 expanded={expanded.memory}
                 onToggle={() => setExpanded("memory", !expanded.memory)}
-                summary={`${rules().length}R ${eidetic().length}E`}
+                count={eidetic().length}
               >
-                <Show when={rules().length > 0}>
-                  <text fg={theme.textMuted}>
-                    <b>Rules</b> ({rules().length})
-                  </text>
-                  <For each={rules()}>
-                    {(rule) => (
-                      <box flexDirection="row" gap={1}>
-                        <text flexShrink={0} fg={theme.primary}>
-                          •
-                        </text>
-                        <text fg={theme.textMuted} wrapMode="word">
-                          {rule.tag ? `[${rule.tag}] ` : ""}
-                          {rule.content}
-                        </text>
-                      </box>
-                    )}
-                  </For>
-                </Show>
-                <Show when={eidetic().length > 0}>
-                  <text fg={theme.textMuted}>
-                    <b>Eidetic</b> ({eidetic().length})
-                  </text>
-                  <For each={eidetic()}>
-                    {(mem) => (
-                      <box flexDirection="row" gap={1}>
-                        <text flexShrink={0} fg={mem.relevance > 0.5 ? theme.success : theme.warning}>
-                          •
-                        </text>
-                        <text fg={theme.textMuted} wrapMode="word">
-                          {mem.summary}
-                        </text>
-                      </box>
-                    )}
-                  </For>
-                </Show>
+                <For each={eidetic()}>
+                  {(mem) => (
+                    <box flexDirection="row" gap={1}>
+                      <text flexShrink={0} fg={mem.relevance > 0.5 ? theme.success : theme.warning}>
+                        •
+                      </text>
+                      <text fg={theme.textMuted} wrapMode="word">
+                        {mem.summary}
+                      </text>
+                    </box>
+                  )}
+                </For>
               </Section>
             </Show>
 

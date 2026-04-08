@@ -237,6 +237,18 @@ export namespace Memory {
     )
   }
 
+  export function searchEidetic(query: string, limit = 10): Eidetic[] {
+    return listEidetic({ active: true, limit: 50 })
+      .filter(
+        (m) =>
+          m.relevance > 0.1 &&
+          (m.content.toLowerCase().includes(query.toLowerCase()) ||
+            m.summary.toLowerCase().includes(query.toLowerCase()) ||
+            m.tags.some((t) => t.toLowerCase().includes(query.toLowerCase()))),
+      )
+      .slice(0, limit)
+  }
+
   export function searchCatalog(query: string, input?: { wing?: string; limit?: number }) {
     const conditions = [
       eq(MemoryCatalogTable.project_id, Instance.project.id),
@@ -314,5 +326,81 @@ export namespace Memory {
     if (memories.length === 0) return ""
     const lines = memories.map((m) => `[${m.tags.join(",")}] (relevance:${m.relevance.toFixed(1)}) ${m.summary}`)
     return `<memory-eidetic>\n${lines.join("\n")}\n</memory-eidetic>`
+  }
+
+  // ─── Compaction extraction ───
+
+  /** Extract knowledge from a compaction summary into catalog memories */
+  export function extractFromCompaction(input: { sessionID: string; summary: string; wing?: string }) {
+    const wing = input.wing ?? Instance.project.name ?? "general"
+    const sections: { hall: string; pattern: RegExp }[] = [
+      { hall: "facts", pattern: /## (?:Goal|Instructions)\s*\n([\s\S]*?)(?=\n## |\n---|\Z)/g },
+      { hall: "discoveries", pattern: /## Discoveries\s*\n([\s\S]*?)(?=\n## |\n---|\Z)/g },
+      { hall: "events", pattern: /## Accomplished\s*\n([\s\S]*?)(?=\n## |\n---|\Z)/g },
+    ]
+
+    for (const { hall, pattern } of sections) {
+      let match
+      while ((match = pattern.exec(input.summary)) !== null) {
+        const content = match[1].trim()
+        if (!content || content.length < 20) continue
+
+        // Extract bullet points as individual memories
+        const lines = content.split("\n").filter((l) => l.trim().startsWith("-") || l.trim().startsWith("*"))
+        if (lines.length > 0) {
+          for (const line of lines) {
+            const text = line.replace(/^[\s\-*]+/, "").trim()
+            if (text.length < 10) continue
+            addCatalog({
+              wing,
+              room: "compaction",
+              hall,
+              content: text,
+              tags: ["compaction"],
+              session: input.sessionID,
+            })
+          }
+        } else if (content.length > 20) {
+          addCatalog({
+            wing,
+            room: "compaction",
+            hall,
+            content,
+            tags: ["compaction"],
+            session: input.sessionID,
+          })
+        }
+      }
+    }
+    log.info("extracted from compaction", { wing, session: input.sessionID })
+  }
+
+  // ─── Correction ───
+
+  /** Find and update eidetic memories matching a query, replacing content */
+  export function correct(input: { query: string; old: string; new: string }) {
+    const matches = searchEidetic(input.query, 50)
+    let corrected = 0
+    for (const mem of matches) {
+      if (mem.content.includes(input.old) || mem.summary.includes(input.old)) {
+        const updated = {
+          content: mem.content.replace(input.old, input.new),
+          summary: mem.summary.replace(input.old, input.new),
+        }
+        Database.use((db) =>
+          db
+            .update(MemoryEideticTable)
+            .set({ content: updated.content, summary: updated.summary })
+            .where(eq(MemoryEideticTable.id, mem.id))
+            .run(),
+        )
+        corrected++
+      }
+    }
+    if (corrected > 0) {
+      log.info("corrected memories", { count: corrected, query: input.query })
+      Bus.publish(Event.EideticUpdated, {})
+    }
+    return corrected
   }
 }
