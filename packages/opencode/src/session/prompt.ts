@@ -661,11 +661,13 @@ export namespace SessionPrompt {
         ...(await InstructionPrompt.system()),
       ]
 
-      // Inject memory: rules (always) + eidetic (decaying context)
+      // Inject memory: rules (always) + eidetic (decaying context) + catalog (project knowledge)
       const rules = Memory.rulesPrompt()
       if (rules) system.push(rules)
       const eidetic = Memory.eideticPrompt()
       if (eidetic) system.push(eidetic)
+      const catalog = Memory.catalogPrompt()
+      if (catalog) system.push(catalog)
 
       const format = lastUser.format ?? { type: "text" }
       if (format.type === "json_schema") {

@@ -328,6 +328,25 @@ export namespace Memory {
     return `<memory-eidetic>\n${lines.join("\n")}\n</memory-eidetic>`
   }
 
+  export function catalogPrompt(limit = 20): string {
+    const entries = listCatalog({ limit })
+    if (entries.length === 0) return ""
+    const grouped = new Map<string, string[]>()
+    for (const e of entries) {
+      const key = `${e.wing}/${e.room}`
+      const list = grouped.get(key) ?? []
+      // Truncate long entries to keep prompt compact
+      const text = e.content.length > 120 ? e.content.slice(0, 117) + "..." : e.content
+      list.push(`(${e.hall}) ${text}`)
+      grouped.set(key, list)
+    }
+    const sections: string[] = []
+    for (const [key, items] of grouped) {
+      sections.push(`[${key}]\n${items.join("\n")}`)
+    }
+    return `<memory-catalog>\nUse the recall tool to search for more detail on any of these.\n${sections.join("\n\n")}\n</memory-catalog>`
+  }
+
   // ─── Compaction extraction ───
 
   /** Extract knowledge from a compaction summary into catalog memories */
