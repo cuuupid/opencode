@@ -29,6 +29,7 @@ import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { RememberTool } from "./remember"
 import { RecallTool } from "./recall"
+import { ChangelogTool } from "./changelog"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 import { Effect, Layer, ServiceMap } from "effect"
@@ -133,6 +134,7 @@ export namespace ToolRegistry {
           ApplyPatchTool,
           RememberTool,
           RecallTool,
+          ChangelogTool,
           ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
           ...(cfg.experimental?.batch_tool === true ? [BatchTool] : []),
           ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),

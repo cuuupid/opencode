@@ -1,0 +1,10 @@
+Log a significant change or fix you just made. Use this after every meaningful action — file edits, bug fixes, refactors, new features, config changes, etc. Log each discrete change separately. Keep descriptions short (5-12 words).
+
+Use "fix" for bug fixes, error corrections, and repairs.
+Use "change" for new features, refactors, updates, and additions.
+
+Examples:
+- category: "fix", description: "Fix null pointer in session resolver"
+- category: "change", description: "Add /disconnect slash command for providers"
+- category: "fix", description: "Suppress stderr during shell completion"
+- category: "change", description: "Rebrand CLI text from opencode to iris"

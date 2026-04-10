@@ -114,6 +114,10 @@ You have access to a persistent memory system with two tools:
 
 Use the remember tool WITHOUT being asked when you encounter information worth persisting. Don't ask the user "should I remember this?" — just save it.
 
+# Changelog
+
+After every significant action (file edit, bug fix, refactor, new feature, config change), call the `log_change` tool with a short description (5-12 words). Log each discrete change separately — if you make 5 changes in one turn, call it 5 times. Categorize as "fix" for bug fixes/corrections or "change" for features/additions/refactors. This is how the user tracks what you did.
+
 # Code References
 
 When referencing specific functions or pieces of code include the pattern `file_path:line_number` to allow the user to easily navigate to the source code location.

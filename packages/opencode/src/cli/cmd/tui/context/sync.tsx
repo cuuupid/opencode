@@ -58,6 +58,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       todo: {
         [sessionID: string]: Todo[]
       }
+      changelog: {
+        [sessionID: string]: { category: "fix" | "change"; description: string }[]
+      }
       message: {
         [sessionID: string]: Message[]
       }
@@ -94,6 +97,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session_status: {},
       session_diff: {},
       todo: {},
+      changelog: {},
       message: {},
       part: {},
       lsp: [],
@@ -349,6 +353,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("vcs", { branch: event.properties.branch })
           break
         }
+      }
+      // Handle events not in the typed union
+      if ((event as any).type === "changelog.updated") {
+        const props = (event as any).properties
+        setStore("changelog", props.sessionID, props.entries)
       }
     })
 

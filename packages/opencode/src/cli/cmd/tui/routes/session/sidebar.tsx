@@ -47,10 +47,12 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const session = createMemo(() => sync.session.get(props.sessionID)!)
   const diff = createMemo(() => sync.data.session_diff[props.sessionID] ?? [])
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
+  const changelog = createMemo(() => sync.data.changelog[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
 
   const [expanded, setExpanded] = createStore({
     context: true,
+    changes: true,
     memory: false,
     mcp: true,
     lsp: true,
@@ -205,6 +207,28 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
             </Section>
+
+            <Show when={changelog().length > 0}>
+              <Section
+                title="Changes"
+                expanded={expanded.changes}
+                onToggle={() => setExpanded("changes", !expanded.changes)}
+                count={changelog().length}
+              >
+                <For each={changelog()}>
+                  {(entry) => (
+                    <box flexDirection="row" gap={1}>
+                      <text flexShrink={0} fg={entry.category === "fix" ? theme.warning : theme.success}>
+                        {entry.category === "fix" ? "F" : "C"}
+                      </text>
+                      <text fg={theme.textMuted} wrapMode="word">
+                        {entry.description}
+                      </text>
+                    </box>
+                  )}
+                </For>
+              </Section>
+            </Show>
 
             <Show when={eidetic().length > 0}>
               <Section
