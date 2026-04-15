@@ -94,6 +94,24 @@ export const TodoTable = sqliteTable(
   ],
 )
 
+export const ChangelogTable = sqliteTable(
+  "changelog",
+  {
+    session_id: text()
+      .$type<SessionID>()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    position: integer().notNull(),
+    category: text().notNull(),
+    description: text().notNull(),
+    ...Timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.session_id, table.position] }),
+    index("changelog_session_idx").on(table.session_id),
+  ],
+)
+
 export const PermissionTable = sqliteTable("permission", {
   project_id: text()
     .primaryKey()
