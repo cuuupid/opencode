@@ -1,5 +1,6 @@
 import { Log } from "@/util/log"
 import { Bonjour } from "bonjour-service"
+import path from "path"
 
 const log = Log.create({ service: "mdns" })
 
@@ -7,24 +8,30 @@ export namespace MDNS {
   let bonjour: Bonjour | undefined
   let currentPort: number | undefined
 
-  export function publish(port: number, domain?: string) {
+  export function publish(port: number, opts?: { domain?: string; name?: string; directory?: string }) {
     if (currentPort === port) return
     if (bonjour) unpublish()
 
     try {
-      const host = domain ?? "iris.local"
-      const name = `iris-${port}`
+      const host = opts?.domain ?? "iris.local"
+      const dir = opts?.directory ?? process.cwd()
+      const label = opts?.name ?? path.basename(dir)
+      const name = `iris-${label}`
       bonjour = new Bonjour()
       const service = bonjour.publish({
         name,
         type: "http",
         host,
         port,
-        txt: { path: "/" },
+        txt: {
+          path: "/",
+          dir: label,
+          directory: dir,
+        },
       })
 
       service.on("up", () => {
-        log.info("mDNS service published", { name, port })
+        log.info("mDNS service published", { name, port, dir: label })
       })
 
       service.on("error", (err) => {
