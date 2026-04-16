@@ -1092,12 +1092,11 @@ export namespace Config {
         .describe(
           "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
         ),
-      app_name: z
+      app_name: z.string().optional().describe("App display name sent to OpenRouter. Defaults to Secondary."),
+      app_referer: z
         .string()
         .optional()
-        .describe(
-          "App name sent to providers like OpenRouter in HTTP-Referer and X-Title headers. Defaults to empty string.",
-        ),
+        .describe("App URL sent as HTTP-Referer to OpenRouter. Defaults to https://secondary.ai."),
       username: z
         .string()
         .optional()

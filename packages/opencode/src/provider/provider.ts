@@ -402,12 +402,15 @@ export namespace Provider {
     },
     openrouter: async () => {
       const config = await Config.get()
-      const name = config.app_name ?? ""
+      const name = config.app_name || "Secondary"
+      const referer = config.app_referer || "https://secondary.ai"
       return {
         autoload: false,
         options: {
           headers: {
-            ...(name ? { "HTTP-Referer": name, "X-Title": name } : {}),
+            "HTTP-Referer": referer,
+            "X-OpenRouter-Title": name,
+            "X-OpenRouter-Categories": "cli-agent",
           },
         },
       }
