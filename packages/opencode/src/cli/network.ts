@@ -22,6 +22,10 @@ const options = {
     describe: "custom domain name for mDNS service (default: iris.local)",
     default: "iris.local",
   },
+  "mdns-name": {
+    type: "string" as const,
+    describe: "custom display name for mDNS (default: directory basename)",
+  },
   cors: {
     type: "string" as const,
     array: true,
@@ -42,10 +46,12 @@ export async function resolveNetworkOptions(args: NetworkOptions) {
   const hostnameExplicitlySet = process.argv.includes("--hostname")
   const mdnsExplicitlySet = process.argv.includes("--mdns")
   const mdnsDomainExplicitlySet = process.argv.includes("--mdns-domain")
+  const mdnsNameExplicitlySet = process.argv.includes("--mdns-name")
   const corsExplicitlySet = process.argv.includes("--cors")
 
   const mdns = mdnsExplicitlySet ? args.mdns : (config?.server?.mdns ?? args.mdns)
   const mdnsDomain = mdnsDomainExplicitlySet ? args["mdns-domain"] : (config?.server?.mdnsDomain ?? args["mdns-domain"])
+  const mdnsName = mdnsNameExplicitlySet ? args["mdns-name"] : undefined
   const port = portExplicitlySet ? args.port : (config?.server?.port ?? args.port)
   const hostname = hostnameExplicitlySet
     ? args.hostname
@@ -56,5 +62,5 @@ export async function resolveNetworkOptions(args: NetworkOptions) {
   const argsCors = Array.isArray(args.cors) ? args.cors : args.cors ? [args.cors] : []
   const cors = [...configCors, ...argsCors]
 
-  return { hostname, port, mdns, mdnsDomain, cors }
+  return { hostname, port, mdns, mdnsDomain, mdnsName, cors }
 }
