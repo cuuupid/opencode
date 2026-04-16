@@ -539,7 +539,6 @@ export namespace Server {
     hostname: string
     mdns?: boolean
     mdnsDomain?: string
-    mdnsName?: string
     cors?: string[]
   }) {
     url = new URL(`http://${opts.hostname}:${opts.port}`)
@@ -567,7 +566,7 @@ export namespace Server {
       opts.hostname !== "localhost" &&
       opts.hostname !== "::1"
     if (shouldPublishMDNS) {
-      MDNS.publish(server.port!, { domain: opts.mdnsDomain, name: opts.mdnsName })
+      MDNS.publish(server.port!, opts.mdnsDomain)
     } else if (opts.mdns) {
       log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
     }
