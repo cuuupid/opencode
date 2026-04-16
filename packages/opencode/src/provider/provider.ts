@@ -410,7 +410,7 @@ export namespace Provider {
           headers: {
             "HTTP-Referer": referer,
             "X-OpenRouter-Title": name,
-            "X-OpenRouter-Categories": "cli-agent",
+            "X-OpenRouter-Categories": "cli-agent,cloud-agent,programming-app,native-app-builder,personal-agent",
           },
         },
       }
