@@ -477,6 +477,35 @@ export function Session() {
       },
     },
     {
+      title: "Ultra compact session",
+      value: "session.ultra_compact",
+      category: "Session",
+      slash: {
+        name: "ultra-compact",
+      },
+      onSelect: (dialog) => {
+        const selectedModel = local.model.current()
+        if (!selectedModel) {
+          toast.show({
+            variant: "warning",
+            message: "Connect a provider to summarize this session",
+            duration: 3000,
+          })
+          return
+        }
+        sdk.fetch(sdk.url + "/session/" + route.sessionID + "/summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            providerID: selectedModel.providerID,
+            modelID: selectedModel.modelID,
+            keepRecent: 0,
+          }),
+        })
+        dialog.clear()
+      },
+    },
+    {
       title: "Unshare session",
       value: "session.unshare",
       keybind: "session_unshare",

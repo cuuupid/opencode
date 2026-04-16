@@ -20,6 +20,8 @@ import { ModelID, ProviderID } from "@/provider/schema"
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
 
+  let pendingKeepRecent: number | undefined
+
   export const Event = {
     Compacted: BusEvent.define(
       "session.compacted",
@@ -107,6 +109,7 @@ export namespace SessionCompaction {
     abort: AbortSignal
     auto: boolean
     overflow?: boolean
+    keepRecent?: number
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
 
@@ -127,6 +130,28 @@ export namespace SessionCompaction {
       if (!hasContent) {
         replay = undefined
         messages = input.messages
+      }
+    }
+
+    // Keep the last N user-assistant exchanges out of compaction
+    const keep = input.keepRecent ?? pendingKeepRecent ?? 10
+    pendingKeepRecent = undefined
+    let toCompact = messages
+    if (keep > 0) {
+      let exchanges = 0
+      let splitIdx = messages.length
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].info.role === "user" && !messages[i].parts.some((p) => p.type === "compaction")) {
+          exchanges++
+          if (exchanges >= keep) {
+            splitIdx = i
+            break
+          }
+        }
+      }
+      if (splitIdx > 0 && splitIdx < messages.length) {
+        toCompact = messages.slice(0, splitIdx)
+        log.info("keeping recent messages", { kept: messages.length - splitIdx, compacting: splitIdx })
       }
     }
 
@@ -201,7 +226,7 @@ When constructing the summary, try to stick to this template:
 ---`
 
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
-    const msgs = structuredClone(messages)
+    const msgs = structuredClone(toCompact)
     await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
     const result = await processor.process({
       user: userMessage,
@@ -325,8 +350,10 @@ When constructing the summary, try to stick to this template:
       }),
       auto: z.boolean(),
       overflow: z.boolean().optional(),
+      keepRecent: z.number().optional(),
     }),
     async (input) => {
+      pendingKeepRecent = input.keepRecent
       const msg = await Session.updateMessage({
         id: MessageID.ascending(),
         role: "user",

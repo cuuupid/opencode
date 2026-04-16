@@ -514,6 +514,7 @@ export const SessionRoutes = lazy(() =>
           providerID: ProviderID.zod,
           modelID: ModelID.zod,
           auto: z.boolean().optional().default(false),
+          keepRecent: z.number().optional(),
         }),
       ),
       async (c) => {
@@ -538,6 +539,7 @@ export const SessionRoutes = lazy(() =>
             modelID: body.modelID,
           },
           auto: body.auto,
+          keepRecent: body.keepRecent,
         })
         await SessionPrompt.loop({ sessionID })
         return c.json(true)
