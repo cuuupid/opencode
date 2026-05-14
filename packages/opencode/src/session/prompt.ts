@@ -708,6 +708,13 @@ export namespace SessionPrompt {
 
       // Check if model finished (finish reason is not "tool-calls" or "unknown")
       const modelFinished = processor.message.finish && !["tool-calls", "unknown"].includes(processor.message.finish)
+      log.info("loop check", {
+        finish: processor.message.finish,
+        modelFinished,
+        result,
+        hasError: !!processor.message.error,
+        provider: model.providerID,
+      })
 
       if (modelFinished && !processor.message.error) {
         if (format.type === "json_schema") {

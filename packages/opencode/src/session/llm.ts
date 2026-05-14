@@ -243,7 +243,12 @@ export namespace LLM {
       temperature: params.temperature,
       topP: params.topP,
       topK: params.topK,
-      providerOptions: ProviderTransform.providerOptions(input.model, params.options),
+      providerOptions: {
+        ...ProviderTransform.providerOptions(input.model, params.options),
+        // Pass Iris session ID to claude-sdk provider so it can resume/fork
+        // SDK sessions and keep Anthropic's prompt cache warm across turns.
+        ...(input.model.providerID === "claude-sdk" ? { "claude-sdk": { session: input.sessionID } } : {}),
+      },
       activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
       tools,
       toolChoice: input.toolChoice,

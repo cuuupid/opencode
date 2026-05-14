@@ -1,6 +1,6 @@
 import path from "path"
 import fs from "fs/promises"
-import { createWriteStream } from "fs"
+import { writeSync } from "fs"
 import { Global } from "../global"
 import z from "zod"
 import { Glob } from "./glob"
@@ -65,16 +65,36 @@ export namespace Log {
       Global.Path.log,
       options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
     )
-    await fs.truncate(logpath).catch(() => {})
-    const stream = createWriteStream(logpath, { flags: "a" })
-    write = async (msg: any) => {
-      return new Promise((resolve, reject) => {
-        stream.write(msg, (err) => {
-          if (err) reject(err)
-          else resolve(msg.length)
-        })
-      })
+    // Open the log with the file-descriptor API and flush synchronously on
+    // each write so `tail -f` sees output immediately (no buffer holdback).
+    const handle = await fs.open(logpath, "a")
+    const fd = handle.fd
+
+    // Maintain a `latest.log` symlink AFTER opening the log fd so the file
+    // is guaranteed to exist on disk when the symlink is created (otherwise
+    // a dangling symlink appears while fs.open is still writing).
+    const latest = path.join(Global.Path.log, "latest.log")
+    await fs.unlink(latest).catch(() => {})
+    await fs.symlink(logpath, latest).catch(() => {})
+
+    write = (msg: any) => {
+      try {
+        writeSync(fd, msg)
+      } catch {}
+      return msg.length
     }
+    // Close the fd on process exit so tail gets an EOF on the symlink.
+    const close = () => {
+      try {
+        handle.close()
+      } catch {}
+    }
+    process.on("exit", close)
+    process.on("SIGINT", close)
+    process.on("SIGTERM", close)
+
+    // Log the path so we (and users) know exactly where to tail it.
+    process.stderr.write(`iris log: ${logpath}\n`)
   }
 
   async function cleanup(dir: string) {

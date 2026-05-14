@@ -40,6 +40,8 @@ export namespace ProviderTransform {
         return "gateway"
       case "@openrouter/ai-sdk-provider":
         return "openrouter"
+      case "claude-sdk":
+        return "claude-sdk"
     }
     return undefined
   }

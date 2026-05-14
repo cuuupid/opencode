@@ -18,6 +18,7 @@ import { iife } from "@/util/iife"
 import { Global } from "../global"
 import path from "path"
 import { Filesystem } from "../util/filesystem"
+import { create as createClaudeSdk } from "./sdk/claude-sdk"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
@@ -157,6 +158,24 @@ export namespace Provider {
           headers: {
             "anthropic-beta": "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
           },
+        },
+      }
+    },
+    async "claude-sdk"() {
+      // Auto-detect if Claude Code is installed by checking for the binary
+      const installed = await (async () => {
+        try {
+          const proc = Bun.spawn(["which", "claude"], { stdout: "pipe", stderr: "ignore" })
+          const code = await proc.exited
+          return code === 0
+        } catch {
+          return false
+        }
+      })()
+      return {
+        autoload: installed,
+        async getModel(_sdk: any, modelID: string) {
+          return createClaudeSdk({ model: modelID })
         },
       }
     },
@@ -929,6 +948,63 @@ export namespace Provider {
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
+    // Inject claude-sdk provider with its model definitions.
+    // This provider uses the Claude Agent SDK (query()) instead of the HTTP API,
+    // allowing use of Claude Max subscriptions.
+    if (!database["claude-sdk"]) {
+      const sdk: ModelsDev.Provider = {
+        id: "claude-sdk",
+        name: "Claude SDK",
+        npm: "claude-sdk",
+        env: [],
+        models: {
+          "claude-sonnet-4-6-20260312": {
+            id: "claude-sonnet-4-6-20260312",
+            name: "Claude Sonnet 4.6 (SDK)",
+            family: "claude-sonnet",
+            reasoning: true,
+            tool_call: true,
+            temperature: false,
+            attachment: true,
+            modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+            cost: { input: 0, output: 0 },
+            limit: { context: 200000, output: 16384 },
+            release_date: "2026-03-12",
+            options: {},
+          },
+          "claude-opus-4-7-20260410": {
+            id: "claude-opus-4-7-20260410",
+            name: "Claude Opus 4.7 (SDK)",
+            family: "claude-opus",
+            reasoning: true,
+            tool_call: true,
+            temperature: false,
+            attachment: true,
+            modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+            cost: { input: 0, output: 0 },
+            limit: { context: 1000000, output: 32000 },
+            release_date: "2026-04-10",
+            options: {},
+          },
+          "claude-haiku-4-5-20250514": {
+            id: "claude-haiku-4-5-20250514",
+            name: "Claude Haiku 4.5 (SDK)",
+            family: "claude-haiku",
+            reasoning: false,
+            tool_call: true,
+            temperature: false,
+            attachment: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            cost: { input: 0, output: 0 },
+            limit: { context: 200000, output: 8192 },
+            release_date: "2025-05-14",
+            options: {},
+          },
+        },
+      }
+      database["claude-sdk"] = fromModelsDevProvider(sdk)
+    }
+
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
 
@@ -1355,12 +1431,27 @@ export namespace Provider {
     if (s.models.has(key)) return s.models.get(key)!
 
     const provider = s.providers[model.providerID]
+
+    // Some providers (e.g. claude-sdk) don't need a traditional SDK instance;
+    // their model loader produces the LanguageModelV2 directly.
+    const loader = s.modelLoaders[model.providerID]
+    if (loader) {
+      try {
+        const sdk = model.api.npm ? await getSDK(model).catch(() => null) : null
+        const language = await loader(sdk, model.api.id, { ...provider.options, ...model.options })
+        s.models.set(key, language)
+        return language
+      } catch (e) {
+        if (e instanceof NoSuchModelError)
+          throw new ModelNotFoundError({ modelID: model.id, providerID: model.providerID }, { cause: e })
+        throw e
+      }
+    }
+
     const sdk = await getSDK(model)
 
     try {
-      const language = s.modelLoaders[model.providerID]
-        ? await s.modelLoaders[model.providerID](sdk, model.api.id, { ...provider.options, ...model.options })
-        : sdk.languageModel(model.api.id)
+      const language = sdk.languageModel(model.api.id) as unknown as LanguageModelV2
       s.models.set(key, language)
       return language
     } catch (e) {
